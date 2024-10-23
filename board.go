@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
@@ -11,26 +11,43 @@ import (
 // Starts at index 0
 // [0] File A-H
 // [1] Rank 8-1
-type Square [2]uint8
+type Square struct {
+	X, Y uint8
+}
 
-func (s Square) ToAlgebraic() string {
+type Vector2i struct {
+	X, Y int
+}
+
+type Move struct {
+	From, To Square
+}
+
+type MoveTable struct {
+	Captures bool       // True if the move can capture
+	Jumps    bool       // True if the move goes through other pieces/is a horse
+	Pattern  []Vector2i // A list of squares to move from 0, 0
+}
+
+func ToAlgebraic(s Square) string {
 	algebraic := []byte{'a', '8'}
 	files := []byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'}
 
-	algebraic[0] = files[s[0]]                    // Grabs the file
-	algebraic[1] = strconv.Itoa(8 - int(s[1]))[0] // Converts the rank (uint8) to rank (ascii byte)
+	algebraic[0] = files[s.X]                    // Grabs the file
+	algebraic[1] = strconv.Itoa(8 - int(s.Y))[0] // Converts the rank (uint8) to rank (ascii byte)
 
 	return string(algebraic)
 }
 
 func FromAlgebraic(s string) Square {
-	square := [2]uint8{0, 0}
+	square := Square{0, 0}
 	files := []byte{'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'}
 
-	square[0] = files[slices.Index(files, s[0])] // Grabs the file
+	square.X = uint8(slices.Index(files, s[0])) // Grabs the file
+
 	rank, err := strconv.Atoi(string(s[1]))
 	ienil(err)
-	square[1] = uint8(8 - rank) // Converts the rank (ascii byte) to rank (uint8)
+	square.Y = uint8(8 - rank) // Converts the rank (ascii byte) to rank (uint8)
 
 	return square
 }
@@ -58,6 +75,20 @@ type Board struct {
 	Fullmoves int
 }
 
+func (b Board) PrintState() {
+	for i, c := range b.Position {
+		if c == 0 {
+			fmt.Print(".")
+		} else {
+			fmt.Printf("%c", c)
+		}
+
+		if i%8 == 7 {
+			fmt.Print("\n")
+		}
+	}
+}
+
 func (b *Board) LoadFen(fen string) {
 	fen_record := strings.Split(fen, " ")
 
@@ -68,7 +99,6 @@ func (b *Board) LoadFen(fen string) {
 	ienil(err)
 
 	for _, c := range fen_record[0] {
-		log.Printf("Processing %c...\n", c)
 		if c == '/' {
 		} else {
 			matched := digit_regex.MatchString(string(c))
@@ -114,4 +144,46 @@ func (b *Board) LoadFen(fen string) {
 	fullmoves, err := strconv.Atoi(fen_record[5])
 	ienil(err)
 	b.Fullmoves = fullmoves
+}
+
+// Returns if a move is legal, a slice of extra moves to be done, and a slice of squares to be captured
+func (b Board) IsMoveLegal(move Move) (bool, []Move, []Square) {
+	//move_table := make(map[string][]byte)
+	// switch b.Position[move.From.X+(move.From.Y*8)] {
+	// case 'P':
+
+	// }
+	return false, []Move{}, []Square{}
+}
+
+// Makes move on the board and updates board state
+// Fails silently if the move given is illegal
+func (b *Board) Move(move Move) {
+	legal, extra, captures := b.IsMoveLegal(move)
+	if !legal {
+		return
+	}
+
+	// Capture captured pieces
+	for _, captured := range captures {
+		b.Position[captured.X+(captured.Y*8)] = 0
+	}
+
+	// Move piece
+	b.Position[move.To.X+(move.To.Y*8)] = b.Position[move.From.X+(move.From.Y*8)]
+	b.Position[move.From.X+(move.From.Y*8)] = 0
+
+	// Move extra returned moves (used for castling)
+	for _, extra_move := range extra {
+		b.Position[extra_move.To.X+(extra_move.To.Y*8)] = b.Position[extra_move.From.X+(extra_move.From.Y*8)]
+		b.Position[extra_move.From.X+(extra_move.From.Y*8)] = 0
+	}
+
+	// If moved piece is white
+	if strings.ToUpper(string(b.Position[move.To.X+(move.To.Y*8)])) == string(b.Position[move.To.X+(move.To.Y*8)]) {
+		b.Active = false // Black's move
+	} else {
+		b.Active = true // White's move
+		b.Fullmoves++
+	}
 }
